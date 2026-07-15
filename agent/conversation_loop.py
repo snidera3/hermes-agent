@@ -3907,22 +3907,26 @@ def run_conversation(
                 ) and not is_context_length_error
 
                 if is_client_error:
+                    # Wrong-model-served NEVER walks the fallback chain: model
+                    # identity is part of the session's authorization envelope
+                    # (task-class gating and privacy posture are per-model), and
+                    # a fallback would complete the session on yet another model
+                    # the user didn't request. Abort with the guard's message.
+                    _wrong_model_served = type(api_error).__name__ == "WrongModelServedError"
                     # Try fallback before aborting — a different provider may
                     # not have the same issue (rate limit, auth, etc.). Only
                     # announce the attempt when a fallback chain actually
                     # exists; otherwise "trying fallback..." is a lie and the
                     # session looks like it's recovering when it's about to
                     # abort silently (#35314, #17446).
-                    if agent._has_pending_fallback():
+                    if not _wrong_model_served and agent._has_pending_fallback():
                         if classified.reason == FailoverReason.content_policy_blocked:
                             agent._buffer_status("⚠️ Provider safety filter blocked this request — trying fallback...")
                         elif classified.reason == FailoverReason.ssl_cert_verification:
                             agent._buffer_status("⚠️ TLS certificate verification failed — trying fallback...")
-                        elif type(api_error).__name__ == "WrongModelServedError":
-                            agent._buffer_status("⚠️ LM Studio served a different model than requested — trying fallback...")
                         else:
                             agent._buffer_status(f"⚠️ Non-retryable error (HTTP {status_code}) — trying fallback...")
-                    if agent._try_activate_fallback():
+                    if not _wrong_model_served and agent._try_activate_fallback():
                         active_system_prompt = _sync_failover_system_message(
                             agent, api_messages, active_system_prompt)
                         retry_count = 0
