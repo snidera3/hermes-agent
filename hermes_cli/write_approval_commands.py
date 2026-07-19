@@ -126,8 +126,11 @@ def _approve(subsystem: str, rest: List[str], memory_store) -> str:
     for rec in targets:
         ok, msg = _apply_one(subsystem, rec, memory_store)
         if ok:
-            wa.discard_pending(subsystem, rec["id"])
-            applied += 1
+            if wa.dispose_pending(
+                    subsystem, rec["id"], disposition="approved", attended=True):
+                applied += 1
+            else:
+                failed.append(f"{rec['id']}: applied but disposition archive failed; queue retained")
         else:
             failed.append(f"{rec['id']}: {msg}")
 
@@ -162,10 +165,12 @@ def _reject(subsystem: str, rest: List[str]) -> str:
     if target.lower() == "all":
         n = 0
         for rec in wa.list_pending(subsystem):
-            if wa.discard_pending(subsystem, rec["id"]):
+            if wa.dispose_pending(
+                    subsystem, rec["id"], disposition="rejected", attended=True):
                 n += 1
         return f"Rejected {n} pending {subsystem} write(s)."
-    if wa.discard_pending(subsystem, target):
+    if wa.dispose_pending(
+            subsystem, target, disposition="rejected", attended=True):
         return f"Rejected pending {subsystem} write '{target}'."
     return f"No pending {subsystem} write with id '{target}'."
 

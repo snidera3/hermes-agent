@@ -235,6 +235,24 @@ def test_pending_store_roundtrip(hermes_home):
     assert wa.discard_pending("memory", rec["id"]) is True
     assert wa.pending_count("memory") == 0
     assert wa.get_pending("memory", rec["id"]) is None
+    archived = wa.get_disposition("memory", rec["id"])
+    assert archived["disposition"] == "discarded"
+    assert archived["payload"]["content"] == "x"
+
+
+def test_skill_discard_requires_attended_archived_disposition(hermes_home):
+    from tools import write_approval as wa
+    rec = wa.stage_write("skills", {"action": "edit", "name": "s", "content": "body"},
+                         summary="edit s", origin="foreground")
+    assert wa.discard_pending("skills", rec["id"]) is False
+    assert wa.get_pending("skills", rec["id"])["id"] == rec["id"]
+    assert wa.get_disposition("skills", rec["id"]) is None
+    assert wa.dispose_pending(
+        "skills", rec["id"], disposition="rejected", attended=True) is True
+    assert wa.get_pending("skills", rec["id"]) is None
+    archived = wa.get_disposition("skills", rec["id"])
+    assert archived["disposition"] == "rejected"
+    assert archived["disposition_surface"] == "attended_review"
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +289,8 @@ def test_handle_reject(hermes_home):
     out = handle_pending_subcommand(wa.SKILLS, ["reject", rec["id"]])
     assert "Rejected" in out
     assert wa.pending_count("skills") == 0
+    archived = wa.get_disposition(wa.SKILLS, rec["id"])
+    assert archived["disposition"] == "rejected"
 
 
 def test_handle_approval_on(hermes_home):

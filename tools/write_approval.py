@@ -37,7 +37,9 @@ writes always stage (too big to eyeball mid-loop).
 
 Pending records live under ``<HERMES_HOME>/pending/{memory,skills}/<id>.json``
 so they survive process restarts and can be reviewed from CLI, gateway, or the
-web dashboard.
+web dashboard. User dispositions are retained under
+``<HERMES_HOME>/pending/archive/{memory,skills}/<id>.json``; a skill proposal
+can no longer disappear through an unarchived programmatic discard.
 """
 
 from __future__ import annotations
@@ -111,6 +113,10 @@ def _pending_dir(subsystem: str) -> Path:
     return get_hermes_home() / "pending" / subsystem
 
 
+def _archive_dir(subsystem: str) -> Path:
+    return get_hermes_home() / "pending" / "archive" / subsystem
+
+
 def stage_write(subsystem: str, payload: Dict[str, Any],
                 *, summary: str, origin: str) -> Dict[str, Any]:
     """Persist a pending write and return a short record describing it.
@@ -177,16 +183,67 @@ def get_pending(subsystem: str, pending_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def discard_pending(subsystem: str, pending_id: str) -> bool:
-    """Delete a pending record. Returns True if it existed."""
+def dispose_pending(subsystem: str, pending_id: str, *, disposition: str,
+                    attended: bool) -> bool:
+    """Archive and remove one pending record after an explicit disposition.
+
+    Skill proposals require an attended review surface.  The archive write is
+    completed before the queue entry is removed; any archive failure leaves the
+    proposal pending.  Payloads are retained byte-for-byte inside the archived
+    record so approval/rejection provenance remains reviewable.
+    """
+    if subsystem not in _SUBSYSTEMS or disposition not in {"approved", "rejected", "discarded"}:
+        return False
+    if subsystem == SKILLS and not attended:
+        logger.warning("Refusing unattended discard of pending skill %s", pending_id)
+        return False
     path = _pending_dir(subsystem) / f"{pending_id}.json"
     try:
-        if path.exists():
-            path.unlink()
-            return True
+        record = get_pending(subsystem, pending_id)
+        if record is None:
+            return False
+        archive_dir = _archive_dir(subsystem)
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        archive_path = archive_dir / f"{pending_id}.json"
+        if archive_path.exists():
+            logger.error("Refusing to overwrite pending disposition archive %s", archive_path)
+            return False
+        archived = dict(record)
+        archived["disposition"] = disposition
+        archived["disposed_at"] = time.time()
+        archived["disposition_surface"] = "attended_review" if attended else "internal"
+        tmp = archive_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(archived, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, archive_path)
+        path.unlink()
+        return True
     except Exception as e:  # pragma: no cover
-        logger.error("Failed to discard pending %s/%s: %s", subsystem, pending_id, e)
+        logger.error("Failed to archive pending %s/%s: %s", subsystem, pending_id, e)
     return False
+
+
+def get_disposition(subsystem: str, pending_id: str) -> Optional[Dict[str, Any]]:
+    """Return one archived disposition, if present."""
+    path = _archive_dir(subsystem) / f"{pending_id}.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def discard_pending(subsystem: str, pending_id: str) -> bool:
+    """Backward-compatible internal discard.
+
+    Skill proposals deliberately fail closed here: they must flow through an
+    attended approve/reject command, which calls :func:`dispose_pending` with a
+    durable disposition. Memory's legacy internal discard remains available but
+    is archived rather than unlinked.
+    """
+    return dispose_pending(
+        subsystem, pending_id, disposition="discarded", attended=False)
 
 
 def pending_count(subsystem: str) -> int:
