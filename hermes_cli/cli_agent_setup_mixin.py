@@ -246,8 +246,11 @@ class CLIAgentSetupMixin:
 
         wait_for_mcp_discovery()
 
-        # Initialize SQLite session store for CLI sessions (if not already done in __init__)
-        if self._session_db is None:
+        # Initialize SQLite session store for CLI sessions (if not already done
+        # in __init__). Sensitive profiles may explicitly disable durable
+        # sessions; do not silently reopen state.db later in startup and defeat
+        # that boundary.
+        if self._persist_sessions and self._session_db is None:
             try:
                 from hermes_state import SessionDB
                 self._session_db = SessionDB()
@@ -402,6 +405,11 @@ class CLIAgentSetupMixin:
                 notice_clear_callback=self._on_notice_clear,
                 reaction_callback=self._on_reaction,
             )
+            if not self._persist_sessions:
+                # AIAgent has several defensive/lazy persistence funnels. One
+                # hard flag closes all of them for no-retention profiles even
+                # if a future call site forgets to check the CLI setting.
+                self.agent._persist_disabled = True
             # Store reference for atexit memory provider shutdown.
             # NOTE: this MUST write to the ``cli`` module's global, not a
             # local module global. ``_run_cleanup`` (in cli.py) reads

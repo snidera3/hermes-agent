@@ -58,7 +58,7 @@ from hermes_cli.cli_commands_mixin import CLICommandsMixin
 from hermes_cli.cli_billing_mixin import CLIBillingMixin
 
 # prompt_toolkit for fixed input area TUI
-from prompt_toolkit.history import FileHistory
+from prompt_toolkit.history import FileHistory, InMemoryHistory
 from prompt_toolkit.styles import Style as PTStyle
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.application import Application
@@ -4002,9 +4002,14 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
         # Initialize SQLite session store early so /title works before first message
         self._session_db = None
         self._session_db_unavailable = False
+        self._persist_sessions = bool(
+            (CLI_CONFIG.get("sessions", {}) or {}).get("persist", True)
+        )
         try:
-            from hermes_state import SessionDB
-            self._session_db = SessionDB()
+            if self._persist_sessions:
+                from hermes_state import SessionDB
+
+                self._session_db = SessionDB()
         except Exception as e:
             # #41386: a failed session store means the transcript is NOT
             # persisted to state.db — the live chat looks healthy but resume
@@ -13852,7 +13857,11 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
             multiline=True,
             wrap_lines=True,
             read_only=Condition(lambda: bool(cli_ref._command_running)),
-            history=FileHistory(str(self._history_file)),
+            history=(
+                FileHistory(str(self._history_file))
+                if self._persist_sessions
+                else InMemoryHistory()
+            ),
             # complete_while_typing fires the completer on every keystroke. The
             # completer does blocking work — fuzzy @-file indexing shells out to
             # rg/fd (up to a 2s timeout) and path completion hits os.listdir/stat

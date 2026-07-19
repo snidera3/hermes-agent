@@ -2927,6 +2927,10 @@ DEFAULT_CONFIG = {
     # Logging — controls file logging to ~/.hermes/logs/.
     # agent.log captures INFO+ (all agent activity); errors.log captures WARNING+.
     "logging": {
+        # Disable every rotating file handler for profiles whose prompts or
+        # tool payloads must never be retained on disk. Console diagnostics
+        # remain available for the active operator.
+        "files_enabled": True,
         "level": "INFO",       # Minimum level for agent.log: DEBUG, INFO, WARNING
         "max_size_mb": 5,      # Max size per log file before rotation
         "backup_count": 3,     # Number of rotated backup files to keep
@@ -3141,6 +3145,10 @@ DEFAULT_CONFIG = {
     # reports 384MB+ databases with 68K+ messages, which slows down FTS5
     # inserts, /resume listing, and insights queries.
     "sessions": {
+        # When false, the classic CLI uses an in-memory prompt history and
+        # does not create or write state.db. Intended for sensitive,
+        # attended profiles that must not retain conversation content.
+        "persist": True,
         # When true, prune ended sessions older than retention_days once
         # per (roughly) min_interval_hours at CLI/gateway/cron startup.
         # Only touches ended sessions — active sessions are always preserved.

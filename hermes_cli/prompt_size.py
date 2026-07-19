@@ -13,9 +13,12 @@ calls ``build_system_prompt_parts`` / inspects ``agent.tools`` offline.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import re
 from typing import Any, Dict, List, Tuple
+from unittest.mock import patch
 
 # The skills index is wrapped in this tag pair inside the stable tier.
 _SKILLS_BLOCK_RE = re.compile(r"<available_skills>.*?</available_skills>", re.DOTALL)
@@ -45,16 +48,26 @@ def _build_inspection_agent(platform: str) -> Any:
     agent_cfg = cfg.get("agent") or {}
     disabled_toolsets = agent_cfg.get("disabled_toolsets") or None
 
-    return AIAgent(
-        model=model,
-        api_key="inspect-only",
-        base_url="https://openrouter.ai/api/v1",
-        quiet_mode=True,
-        save_trajectories=False,
-        platform=platform,
-        enabled_toolsets=enabled_toolsets,
-        disabled_toolsets=disabled_toolsets,
-    )
+    # AIAgent normally warms model metadata on a background thread. That probe
+    # is useful for a live chat but violates this command's documented offline
+    # contract and can print a DNS error after the JSON report. The diagnostic
+    # needs only config-declared context and schemas, so suppress the warm-up at
+    # its imported chokepoint for the duration of construction.
+    with (
+        patch("agent.agent_init.fetch_model_metadata", return_value=None),
+        contextlib.redirect_stdout(io.StringIO()),
+        contextlib.redirect_stderr(io.StringIO()),
+    ):
+        return AIAgent(
+            model=model,
+            api_key="inspect-only",
+            base_url="https://openrouter.ai/api/v1",
+            quiet_mode=True,
+            save_trajectories=False,
+            platform=platform,
+            enabled_toolsets=enabled_toolsets,
+            disabled_toolsets=disabled_toolsets,
+        )
 
 
 def compute_prompt_breakdown(platform: str = "cli") -> Dict[str, Any]:

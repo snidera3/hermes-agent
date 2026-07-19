@@ -302,6 +302,13 @@ def setup_logging(
     global _logging_initialized
     home = hermes_home or get_hermes_home()
     log_dir = home / "logs"
+
+    # Sensitive profiles can disable durable file logging.  Resolve this
+    # before creating the directory or registering the asynchronous queue.
+    if not _file_logging_enabled():
+        _logging_initialized = True
+        return log_dir
+
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # Read config defaults (best-effort — config may not be loaded yet).
@@ -787,3 +794,27 @@ def _read_logging_config():
     except Exception:
         pass
     return (None, None, None)
+
+
+def _file_logging_enabled() -> bool:
+    """Best-effort read of ``logging.files_enabled`` (default true)."""
+    try:
+        from utils import fast_safe_load
+
+        config_path = get_config_path()
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as config_file:
+                config = fast_safe_load(config_file) or {}
+            try:
+                from hermes_cli import managed_scope
+
+                config = managed_scope.apply_managed_overlay(config)
+            except Exception:
+                pass
+            logging_config = config.get("logging", {})
+            if isinstance(logging_config, dict):
+                value = logging_config.get("files_enabled", True)
+                return value is not False
+    except Exception:
+        pass
+    return True
