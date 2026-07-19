@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 import agent.model_metadata as mm
 from agent.error_classifier import FailoverReason, classify_api_error
 from agent.errors import WrongModelServedError
@@ -101,17 +103,26 @@ def test_wrong_model_served_error_is_terminal():
     assert "ab-qwen3-32b" in classified.message
 
 
-def test_runtime_guard_comparison_semantics():
-    """The conversation-loop guard accepts exact and basename matches in
-    either direction, and rejects genuinely different served models."""
-    def accepted(served, requested):
-        return (
-            served == requested
-            or mm._model_id_matches(served, requested)
-            or mm._model_id_matches(requested, served)
-        )
+def test_response_guard_accepts_aliases_for_ordinary_profiles():
+    mm.assert_lmstudio_response_model(
+        "nemotron-3-nano", "nvidia/nemotron-3-nano"
+    )
+    mm.assert_lmstudio_response_model("nemotron-3-nano", "")
 
-    assert accepted("nemotron-3-nano", "nemotron-3-nano")
-    assert accepted("nvidia/nemotron-3-nano", "nemotron-3-nano")
-    assert not accepted("ab-qwen3-32b", "nemotron-3-nano")
-    assert not accepted("qwen3-coder-next-mlx", "nemotron-3-nano")
+
+def test_response_guard_requires_present_exact_identity_when_requested():
+    mm.assert_lmstudio_response_model(
+        "nemotron-3-nano",
+        "nemotron-3-nano",
+        require_identity=True,
+        exact=True,
+    )
+
+    for served in ("", "nvidia/nemotron-3-nano", "ab-qwen3-32b"):
+        with pytest.raises(WrongModelServedError):
+            mm.assert_lmstudio_response_model(
+                "nemotron-3-nano",
+                served,
+                require_identity=True,
+                exact=True,
+            )

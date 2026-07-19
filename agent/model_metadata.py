@@ -1558,6 +1558,45 @@ def check_lmstudio_model_served(
     return "missing", loaded
 
 
+def assert_lmstudio_response_model(
+    requested_model: str,
+    served_model: str,
+    *,
+    require_identity: bool = False,
+    exact: bool = False,
+) -> None:
+    """Require an LM Studio response to preserve the requested identity.
+
+    Ordinary profiles retain namespace/basename compatibility and tolerate a
+    provider that omits the response identity. Safety-sensitive launchers may
+    set ``require_identity`` and ``exact`` so absence or an alias fails before
+    response content or tool calls are consumed.
+    """
+    from agent.errors import WrongModelServedError
+
+    requested = _strip_provider_prefix(requested_model)
+    served = str(served_model or "").strip()
+    if not served:
+        if require_identity:
+            raise WrongModelServedError(
+                f"LM Studio response omitted model identity for requested {requested!r}."
+            )
+        return
+
+    matches = served == requested
+    if not exact:
+        matches = (
+            matches
+            or _model_id_matches(served, requested)
+            or _model_id_matches(requested, served)
+        )
+    if not matches:
+        raise WrongModelServedError(
+            f"LM Studio served {served!r} instead of the requested {requested!r}. "
+            "Refusing to continue on different model weights."
+        )
+
+
 def query_ollama_num_ctx(model: str, base_url: str, api_key: str = "") -> Optional[int]:
     """Query an Ollama server for the model's context length.
 
