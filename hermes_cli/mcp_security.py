@@ -30,6 +30,8 @@ import re
 import shlex
 from typing import Any
 
+from hermes_cli.mcp_local_bearer import validate_local_bearer_reference
+
 _SHELL_INTERPRETERS = frozenset({
     "bash",
     "sh",
@@ -134,6 +136,13 @@ def validate_mcp_server_entry(name: str, entry: dict[str, Any]) -> list[str]:
         return []
 
     issues: list[str] = []
+
+    if not validate_local_bearer_reference(name, entry):
+        issues.append(
+            f"MCP server '{name}' has an invalid local bearer configuration "
+            "(it must use its fixed local bridge URL and no Authorization header)"
+        )
+        return issues
 
     # 1. Hardcoded IOC blocklist — applies regardless of command shape.
     flat = _entry_text(entry)

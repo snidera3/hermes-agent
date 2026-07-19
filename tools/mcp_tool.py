@@ -4013,7 +4013,20 @@ def _load_mcp_config() -> Dict[str, dict]:
         for name, cfg in _filter_suspicious_mcp_servers(servers).items():
             interpolated = _interpolate_env_vars(cfg)
             if isinstance(interpolated, dict):
-                safe_servers[name] = interpolated
+                try:
+                    from hermes_cli.mcp_local_bearer import (
+                        LocalBearerConfigurationError,
+                        resolve_local_bearer_config,
+                    )
+
+                    safe_servers[name] = resolve_local_bearer_config(name, interpolated)
+                except LocalBearerConfigurationError:
+                    # The error deliberately contains no filename or token;
+                    # keep runtime logs equally non-sensitive.
+                    logger.warning(
+                        "Skipping MCP server '%s': local bearer configuration rejected",
+                        name,
+                    )
         return safe_servers
     except Exception as exc:
         logger.debug("Failed to load MCP config: %s", exc)

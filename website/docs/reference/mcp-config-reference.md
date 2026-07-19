@@ -25,6 +25,10 @@ mcp_servers:
     url: "..."          # HTTP servers
     headers: {}
 
+    # Narrow local-bridge credential support. This is a filename, not the
+    # bearer value. It is accepted only for an approved bridge's exact /mcp URL.
+    local_bearer_token_file: "~/.hearth-secrets/digitail-mcp.bearer"
+
     # Optional HTTP/SSE TLS settings:
     ssl_verify: true                # bool or path to a CA bundle (PEM)
     client_cert: "/path/to/cert.pem"  # mTLS client certificate (see below)
@@ -50,6 +54,7 @@ mcp_servers:
 | `env` | mapping | stdio | Environment passed to the subprocess |
 | `url` | string | HTTP | Remote MCP endpoint |
 | `headers` | mapping | HTTP | Headers for remote server requests |
+| `local_bearer_token_file` | string | approved local HTTP | A direct child of `~/.hearth-secrets`, read only at connection time to produce the Authorization header. It cannot be combined with an Authorization header. The only supported bindings are `digitail` → `digitail-mcp.bearer` → port 8765, `covet` → `covet-mcp.bearer` → port 8766, and `idexx` → `idexx-mcp.bearer` → port 8767; each uses `http://127.0.0.1` or `http://localhost` and `/mcp` |
 | `ssl_verify` | bool or string | HTTP | TLS verification. `true` (default) uses system CAs, `false` disables verification (insecure), or a string path to a custom CA bundle (PEM) |
 | `client_cert` | string or list | HTTP | mTLS client certificate. String = path to a PEM file containing cert + key. List `[cert, key]` = separate files. List `[cert, key, password]` = encrypted key |
 | `client_key` | string | HTTP | Path to the client private key, when `client_cert` is a string and the key is in a separate file |

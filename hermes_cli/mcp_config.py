@@ -25,6 +25,7 @@ from hermes_cli.config import (
 )
 from hermes_cli.colors import Colors, color
 from hermes_constants import display_hermes_home
+from hermes_cli.mcp_local_bearer import resolve_local_bearer_config
 from hermes_cli.mcp_security import validate_mcp_server_entry
 from tools.mcp_tool import _ENV_VAR_PATTERN, _env_ref_name
 
@@ -251,7 +252,7 @@ def _apply_mcp_preset(
 
 # ─── Discovery (temporary connect) ───────────────────────────────────────────
 
-def _resolve_mcp_server_config(config: dict) -> dict:
+def _resolve_mcp_server_config(config: dict, *, server_name: str | None = None) -> dict:
     """Resolve ``${ENV}`` placeholders in a server config before connecting.
 
     Mirrors ``_load_mcp_config()`` in ``tools/mcp_tool.py``: load
@@ -272,7 +273,10 @@ def _resolve_mcp_server_config(config: dict) -> dict:
             load_hermes_dotenv()
         except Exception:  # pragma: no cover — defensive
             pass
-    return _interpolate_env_vars(config)
+    return resolve_local_bearer_config(
+        server_name,
+        _interpolate_env_vars(config),
+    )
 
 
 def _probe_single_server(
@@ -299,7 +303,7 @@ def _probe_single_server(
         _parse_boolish,
     )
 
-    config = _resolve_mcp_server_config(config)
+    config = _resolve_mcp_server_config(config, server_name=name)
     if connect_timeout is None:
         raw_timeout = config.get("connect_timeout", 30)
         try:
@@ -746,6 +750,8 @@ def cmd_mcp_test(args):
     headers = cfg.get("headers", {})
     if auth_type == "oauth":
         _info("Auth: OAuth 2.1 PKCE")
+    elif cfg.get("local_bearer_token_file"):
+        _info("Auth: approved local bridge bearer file")
     elif headers:
         for k, v in headers.items():
             if isinstance(v, str) and ("key" in k.lower() or "auth" in k.lower()):
